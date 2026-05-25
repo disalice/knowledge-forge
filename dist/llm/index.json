@@ -1,6 +1,12 @@
 [
   {
     "metadata": {
+      "layout": "page"
+    },
+    "body": "# Knowledge Forge\n\nソフトウェアエンジニアリングにおける設計基準やベストプラクティスを一元管理するナレッジベースです。\n\n<script setup>\nimport { computed } from 'vue'\nimport { withBase } from 'vitepress'\nimport { data as posts } from './index.data'\n\n// カテゴリごとにナレッジをグループ化\nconst categories = computed(() => {\n  // データがうまく読み込めなかった場合のフォールバック（エラー防止）\n  if (!posts || !Array.isArray(posts)) return {}\n\n  return posts.reduce((acc, post) => {\n    const cat = post.category || 'unknown-category'\n    if (!acc[cat]) acc[cat] = []\n    acc[cat].push(post)\n    return acc\n  }, {})\n})\n</script>\n\n<div v-for=\"(items, category) in categories\" :key=\"category\" class=\"category-section\">\n  <h2 style=\"text-transform: capitalize; border-bottom: 1px solid var(--vp-c-divider); padding-bottom: 0.3em;\">\n    📁 {{ category.replace('-', ' ') }}\n  </h2>\n  <ul>\n    <li v-for=\"item in items\" :key=\"item.url\" style=\"margin: 0.5rem 0;\">\n      <a :href=\"withBase(item.url)\" style=\"font-weight: 500; color: var(--vp-c-brand-1);\">\n        {{ item.title }}\n      </a>\n    </li>\n  </ul>\n</div>"
+  },
+  {
+    "metadata": {
       "id": 1,
       "title": "REST APIのレスポンスにおけるrequestIdの必須化",
       "description": "REST APIのレスポンスには必ずrequestIdを含めることで、トレーサビリティを向上させることができます。",
