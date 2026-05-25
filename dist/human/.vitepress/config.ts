@@ -2,9 +2,9 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   // リポジトリ名
-  base: '/documents/', 
-  title: "Knowledge Repository",
-  description: "Engineering Best Practices & System Design SSOT",
+  base: '/knowledge-forge/', 
+  title: "Knowledge Forge",
+  description: "Engineering Best Practices",
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
@@ -20,7 +20,7 @@ export default defineConfig({
       }
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/YOUR_ORG/knowledge-repository' }
+      { icon: 'github', link: 'https://github.com/disalice/knowledge-forge' }
     ]
   }
 })
