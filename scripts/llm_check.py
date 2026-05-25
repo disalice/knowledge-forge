@@ -1,15 +1,19 @@
 import glob
 import json
 import os
-from datetime import datetime
 import time
+from datetime import datetime
 
 import frontmatter
+import httpx
 from openai import OpenAI
 
 client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
     api_key=os.environ["GITHUB_TOKEN"],
+    # 60秒応答がなければタイムアウトとし、最大2回リトライする
+    timeout=httpx.Timeout(60.0),
+    max_retries=2,
 )
 
 
@@ -114,7 +118,10 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
 
 【注意事項】
 1. "content" フィールドには、Markdownの全文を1つの文字列として格納してください。
-2. Markdown内にダブルクォーテーション（"）やバックスラッシュ（\）、改行（\n）が含まれる場合、JSONの構文エラーにならないよう必ず適切にエスケープ処理（\\" , \\n など）を行ってください。
+2. Markdown内にダブルクォーテーション（"）や
+   バックスラッシュ（\）、改行（\n）が含まれる場合、
+   JSONの構文エラーにならないよう必ず適切にエスケープ処理（\\" , \\n など）を
+   行ってください。
 3. 絶対に途中でテキストを打ち切らず、最後まで完全なMarkdownを出力してください。
 
 【判定・編集ルール】
@@ -179,11 +186,11 @@ def main():
 
     # 2. LLMによるカテゴリの決定と関連ファイルの絞り込み
     print("Analyzing category and selecting related files...")
-    start_step1 = time.time() # 計測開始
+    start_step1 = time.time()  # 計測開始
     analysis_result = step1_analyze_issue(
         issue_body, metadata_list, existing_categories
     )
-    print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds") # 結果出力
+    print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds")  # 結果出力
 
     category = analysis_result["category"]
     related_paths = analysis_result["related_file_paths"]
@@ -206,11 +213,11 @@ def main():
 
     # 4. LLMによる最終的なMarkdownの生成
     print("Generating structural knowledge markdown...")
-    start_step2 = time.time() # 計測開始
+    start_step2 = time.time()  # 計測開始
     final_result = step2_generate_markdown(
         issue_body, author, category, related_files_content, today
     )
-    print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds") # 結果出力
+    print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds")  # 結果出力
 
     # 5. ファイルの書き出し
     file_path = final_result["target_file_path"]
