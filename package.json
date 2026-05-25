@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "docs:dev": "vitepress dev src --host",
-    "docs:build": "vitepress build src --outDir ../dist/human",
+    "docs:build": "vitepress build src --outDir dist/human",
     "docs:preview": "vitepress preview src"
   },
   "devDependencies": {

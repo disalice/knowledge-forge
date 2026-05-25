@@ -20,18 +20,12 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Build LLM JSON (dist/llm)
         run: |
           pip install python-frontmatter
           python scripts/parse_to_json.py
-
-      # src配下のMarkdownをVitePressドキュメントルートに同期
-      - name: Sync source for Human (dist/human)
-        run: |
-          mkdir -p src  # srcが存在しなければ作成、あれば何もしない
-          rsync -av --exclude='.vitepress' src/ dist/human/
 
       # 生成された dist/llm を main ブランチに自動コミット＆プッシュ
       - name: Commit and Push dist/llm
@@ -50,17 +44,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build VitePress
-        run: npm run docs:build # package.json に "docs:build": "vitepress build dist/human" を設定
+        # ここで成果物が直接 dist/human 配下に生成される
+        run: npm run docs:build
 
-      # LLM用のJSONを、Pagesで公開するフォルダにコピー
+      # LLM用のJSONを、ビルド成果物のある dist/human 直下の llm フォルダへコピー
       - name: Expose JSON to GitHub Pages
-        run: cp -r dist/llm dist/human/.vitepress/dist/llm
+        run: cp -r dist/llm dist/human/llm
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -68,7 +63,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'dist/human/.vitepress/dist'
+          path: "dist/human"
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
