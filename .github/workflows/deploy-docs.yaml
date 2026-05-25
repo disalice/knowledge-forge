@@ -33,6 +33,20 @@ jobs:
           mkdir -p src  # srcが存在しなければ作成、あれば何もしない
           rsync -av --exclude='.vitepress' src/ dist/human/
 
+      # 生成された dist/llm を main ブランチに自動コミット＆プッシュ
+      - name: Commit and Push dist/llm
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add dist/llm/
+          # 差分がある場合のみコミットしてプッシュ
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(artifacts): dist/llm の自動更新 [skip ci]"
+            git push origin main
+          else
+            echo "No changes in dist/llm"
+          fi
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -43,7 +57,11 @@ jobs:
 
       - name: Build VitePress
         run: npm run docs:build # package.json に "docs:build": "vitepress build dist/human" を設定
-        
+
+      # LLM用のJSONを、Pagesで公開するフォルダにコピー
+      - name: Expose JSON to GitHub Pages
+        run: cp -r dist/llm dist/human/.vitepress/dist/llm
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
