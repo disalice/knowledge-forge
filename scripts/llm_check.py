@@ -20,12 +20,13 @@ def build_system_prompt(existing_files_content):
 【既存のナレッジ】
 {existing_files_content}
 
-【判定ルール】
+【判定・編集ルール】
 1. 重複・矛盾の確認: 提案内容が既存ナレッジと重複、または矛盾していないか確認してください。
-2. 処理の決定:
-   - 重複がある場合: 既存のMarkdownを統合・上書きする形で出力。
+2. 命名規則・表記揺れの自動補正: JSONのキー名、変数名、技術用語において、キャメルケース（例: requestId）とスネークケース（例: trace_id）の混在など表記揺れを検出した場合、システム全体で一貫性が出るように自動でフォーマットを統一してください。
+3. 処理の決定:
+   - 重複がある場合: 既存のMarkdownを統合し、表記揺れを修正・上書きする形で出力。
    - 重複がない場合: 新規Markdownとして出力。
-3. 出力フォーマット:
+4. 出力フォーマット:
    - YAML Front Matterを含めた完全なMarkdownを出力すること。
    - 指定されたスキーマ（id, title, category, author, difficulty, tags, target_artifacts, updated_at）を厳守すること。
    - `updated_at` には本日付（{today}）を使用してください。
