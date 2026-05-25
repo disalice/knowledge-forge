@@ -10,7 +10,7 @@
 
 * **AIによるナレッジの自動補完・構造化**: Issueで概要（What）を提案するだけで、AI（GPT-4o mini）が既存のナレッジと照合し、背景（Why）や実装方法（How）を補完して整理されたMarkdownを生成します。
 * **人間とAIの協調ワークフロー**: AIが生成したMarkdownは自動でPull Request（PR）として起票され、人間のレビューを経てからメインブランチにマージされます。
-* **人間向けドキュメント（VitePress）**: マージされると、人間が読みやすい静的サイトとしてGitHub Pagesにデプロイされます。
+* **人間向けドキュメント（VitePress）**: マージされると、人間が読みやすい静的サイトとして[GitHub Pages](https://disalice.github.io/knowledge-forge/)にデプロイされます。
 * **LLM向けデータ（JSON）**: 同時に、他のAIシステムがシステムプロンプトやRAGとして活用しやすいJSON形式（Front Matterのメタデータ＋本文）にパースされ、公開されます。
 
 ## ワークフロー

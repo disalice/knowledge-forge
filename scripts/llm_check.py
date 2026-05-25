@@ -2,6 +2,7 @@ import glob
 import json
 import os
 from datetime import datetime
+from time import time
 
 import frontmatter
 from openai import OpenAI
@@ -111,6 +112,11 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
 【ナレッジの構造化と自動補完ルール】
 情報が不足している項目がある場合、あなたの持つ一般的な知識を用いて自動補完（推測・加筆）してください。
 
+【注意事項】
+1. "content" フィールドには、Markdownの全文を1つの文字列として格納してください。
+2. Markdown内にダブルクォーテーション（"）やバックスラッシュ（\）、改行（\n）が含まれる場合、JSONの構文エラーにならないよう必ず適切にエスケープ処理（\\" , \\n など）を行ってください。
+3. 絶対に途中でテキストを打ち切らず、最後まで完全なMarkdownを出力してください。
+
 【判定・編集ルール】
 1. 重複がある場合: 既存のMarkdownを統合し、上書きする形で出力。
 2. 重複がない場合: 新規Markdownとして出力。
@@ -173,9 +179,12 @@ def main():
 
     # 2. LLMによるカテゴリの決定と関連ファイルの絞り込み
     print("Analyzing category and selecting related files...")
+    start_step1 = time.time() # 計測開始
     analysis_result = step1_analyze_issue(
         issue_body, metadata_list, existing_categories
     )
+    print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds") # 結果出力
+
     category = analysis_result["category"]
     related_paths = analysis_result["related_file_paths"]
 
@@ -197,9 +206,11 @@ def main():
 
     # 4. LLMによる最終的なMarkdownの生成
     print("Generating structural knowledge markdown...")
+    start_step2 = time.time() # 計測開始
     final_result = step2_generate_markdown(
         issue_body, author, category, related_files_content, today
     )
+    print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds") # 結果出力
 
     # 5. ファイルの書き出し
     file_path = final_result["target_file_path"]
