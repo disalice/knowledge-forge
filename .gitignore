@@ -1,1 +1,21 @@
+# Node
 node_modules/
+.vitepress/dist/
+.vitepress/cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ruff_cache/
+
+# Environment
+.venv/
+ENV/
+env/
+
+# IDEs and OS
+.vscode/tags
+!.vscode/settings.json
+!.vscode/extensions.json
+.DS_Store

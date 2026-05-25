@@ -1,0 +1,31 @@
+{
+  "name": "Knowledge Forge DevEnv",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    // コンテナにNode.js (v20) をインストール
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20",
+      "nodeGypDependencies": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+        "python.analysis.extraPaths": ["${containerWorkspaceFolder}/scripts"]
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "Vue.volar",               // VitePress(Vue)用
+        "esbenp.prettier-vscode"   // Markdown, JSON等のフォーマット用
+      ]
+    }
+  },
+  // コンテナ作成直後に npm と uv の両方のパッケージを同期
+  "postCreateCommand": "npm ci && uv sync",
+  "remoteUser": "vscode"
+}

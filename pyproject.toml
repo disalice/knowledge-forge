@@ -1,0 +1,32 @@
+[project]
+name = "knowledge-forge"
+version = "0.1.0"
+description = "Engineering Best Practices & System Design SSOT"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai==1.14.0",
+    "python-frontmatter==1.1.0",
+    "pyyaml==6.0.1"
+]
+
+[dependency-groups]
+dev = [
+    "taskipy>=1.12.0",
+    "ruff",
+]
+
+# --- Linter & Formatter (Ruff) の設定 ---
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "N"]
+fixable = ["ALL"]
+
+# --- タスクランナー (taskipy) の設定 ---
+[tool.taskipy.tasks]
+lint = "ruff check scripts/ --fix"
+format = "ruff format scripts/"
+build-json = "python scripts/parse_to_json.py"
