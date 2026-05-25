@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  // リポジトリ名
+  base: '/documents/', 
   title: "Knowledge Repository",
   description: "Engineering Best Practices & System Design SSOT",
   themeConfig: {
