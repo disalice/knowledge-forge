@@ -18,6 +18,7 @@ body:
         - distributed-systems
         - infrastructure
         - collaboration
+        - cicd
     validations:
       required: true
 

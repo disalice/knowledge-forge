@@ -1,10 +1,10 @@
 ---
 id: 0fa49860-1bab-43ff-872e-2cdeed650249
 title: フィーチャートグル（Feature Toggles）パターン
-category: app-architecture
+category: cicd
 author: disalice
 difficulty: 3
-tags: ["クリーンアーキテクチャ"]
+tags: ["デプロイ"]
 target_artifacts: ["コード", "ドキュメント"]
 updated_at: 2026-05-26
 ---
