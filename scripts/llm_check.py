@@ -6,14 +6,14 @@ from datetime import datetime
 
 import frontmatter
 import httpx
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
 
+# 60秒でのタイムアウト設定と、SDK標準のリトライ設定
 client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
     api_key=os.environ["GITHUB_TOKEN"],
-    # 60秒応答がなければタイムアウトとし、最大2回リトライする
     timeout=httpx.Timeout(60.0),
-    max_retries=2,
+    max_retries=3,
 )
 
 
@@ -30,10 +30,7 @@ def get_existing_categories():
 
 
 def load_all_metadata():
-    """
-    全MarkdownファイルからFront Matter（メタデータ）のみを抽出し、
-    軽量なインデックスを作成する
-    """
+    """全MarkdownファイルからFront Matter（メタデータ）のみを抽出する"""
     metadata_list = []
     for filepath in glob.glob("src/**/*.md", recursive=True):
         if ".vitepress" in filepath or filepath.endswith("index.md"):
@@ -56,24 +53,26 @@ def load_all_metadata():
 
 
 def step1_analyze_issue(issue_body, metadata_list, existing_categories):
-    """【第1段階】メタデータのみを渡し、カテゴリ決定と、重複・関連する可能性のあるファイルを特定する"""
+    """
+    【第1段階】メタデータのみを渡し、カテゴリ・ファイルパス・アクションをJSONで決定する
+    ※Markdown本文の生成はここでは行わない
+    """
     categories_str = ", ".join(existing_categories) if existing_categories else "なし"
 
     system_prompt = f"""あなたは優秀なソリューションアーキテクトです。
-ユーザーから提案されたIssue内容を分析し、以下の2点を決定してください。
+ユーザーから提案されたIssue内容を分析し、以下の項目を決定してください。
 
 1. カテゴリの決定:
-   既存のカテゴリ一覧、または既存ファイルのメタデータ一覧を確認し、最も適切なカテゴリを選択してください。
-   もし既存カテゴリに該当しない新しい概念の場合は、今後追加されるであろうナレッジの予想をしながら、
-   ケバブケース（例: security-design）で新しいカテゴリ名を作成してください。
-   無理に2単語にする必要はなく、1単語でも3単語以上でも問題ありません。
-
+   既存のカテゴリ一覧から選択するか、新規概念の場合はケバブケース
+   （例: security-design）で新しいカテゴリ名を作成してください。
 2. 重複・関連ファイルの特定:
-   既存ファイルのメタデータ（タイトルや概要）を確認し、
-   今回の提案内容と「重複」「矛盾」「強い関連性」があり、
-   詳細な本文をチェックすべきファイル（最大2つまで）の
-   `target_file_path` を選出してください。
-   該当がなければ空配列にしてください。
+   既存ファイルのメタデータを確認し、詳細な本文をチェックすべきファイル（最大2つまで）の
+   `target_file_path` を選出してください。該当なしなら空配列にしてください。
+3. アクションと対象ファイルパス:
+   - 完全に内容が重複しており、既存のファイルを「更新」すべき場合は
+     action="update" とし、target_file_path にそのファイルのパスを指定してください。
+   - 「新規作成」すべき場合は action="create" とし、target_file_path に
+     "src/{{決定したカテゴリ}}/{{適切な英単語のファイル名}}.md" を指定してください。
 
 【現在の既存カテゴリ】
 {categories_str}
@@ -84,10 +83,11 @@ def step1_analyze_issue(issue_body, metadata_list, existing_categories):
 必ず以下のJSONスキーマのみを出力してください。
 {{
   "category": "決定したカテゴリ名",
-  "related_file_paths": ["詳細をチェックすべき既存ファイルのパス1", "パス2"]
+  "related_file_paths": ["詳細をチェックすべき既存ファイルのパス1", "パス2"],
+  "action": "create または update",
+  "target_file_path": "src/.../....md"
 }}
 """
-
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -101,11 +101,12 @@ def step1_analyze_issue(issue_body, metadata_list, existing_categories):
 
 
 def step2_generate_markdown(issue_body, author, category, related_files_content, today):
-    """【第2段階】絞り込まれた特定のファイル本文のみをコンテキストに含め、最終的なMarkdownを生成する"""
+    """
+    【第2段階】純粋なMarkdownテキストのみをストリーミングで生成する
+    JSONエスケープのオーバーヘッドを無くし、ストリーミングでタイムアウトを防ぐ
+    """
     system_prompt = f"""あなたは優秀なシニアソフトウェアエンジニアです。
 提案されたIssue内容を、プロジェクトに依存しない汎用的なベストプラクティスとして構造化・自動補完してMarkdownを生成してください。
-自動補完の際は、ベストプラクティスに則りなるべく具体的に(数値化できると望ましい)、かつ嘘や虚飾、絵文字の使用をしないようにしてください。
-関連ナレッジの項目については、Issue内に含まれていなければ補完せず無いものとして扱ってください。
 
 【選定されたカテゴリ】
 {category}
@@ -113,22 +114,11 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
 【関連する既存ナレッジの本文（重複・矛盾チェック用）】
 {related_files_content}
 
-【ナレッジの構造化と自動補完ルール】
-情報が不足している項目がある場合、あなたの持つ一般的な知識を用いて自動補完（推測・加筆）してください。
-
-【注意事項】
-1. "content" フィールドには、Markdownの全文を1つの文字列として格納してください。
-2. Markdown内にダブルクォーテーション（"）や
-   バックスラッシュ（\）、改行（\n）が含まれる場合、
-   JSONの構文エラーにならないよう必ず適切にエスケープ処理（\\" , \\n など）を
-   行ってください。
-3. 絶対に途中でテキストを打ち切らず、最後まで完全なMarkdownを出力してください。
-
-【判定・編集ルール】
-1. 重複がある場合: 既存のMarkdownを統合し、上書きする形で出力。
-2. 重複がない場合: 新規Markdownとして出力。
-3. Markdown出力フォーマット:
-   - YAML Front Matterの以下の要素を含めること
+【出力形式の絶対ルール】
+1. JSONフォーマットや ````markdown ```` のようなコードブロックの装飾は一切行わず、
+   **純粋なMarkdownテキストのみ**を出力してください。
+2. ファイルの先頭には必ずYAML Front Matter（---で囲まれた領域）を含めてください。
+   - 必要なキー:
      - id
      - title
      - category
@@ -137,42 +127,67 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
      - tags
      - target_artifacts
      - updated_at
-   - `category` には選定されたカテゴリ（{category}）を設定すること。
-   - `updated_at` には本日付（{today}）を使用すること。
-   - 本文は以下の見出し構成に統一。
-     - ## 概要
-     - ## なぜ必要なのか
-     - ## 実装標準
-     - ## 設計・実装時のチェックリスト
-     - ## アンチパターン
-       - なければ削除してOK
-     - ## 実施・導入によるトレードオフ
-       - なければ削除してOK
-     - ## 適用範囲と例外
-       - なければ削除してOK
-     - ## 検証方法
-       - なければ削除してOK
-     - ## 関連ナレッジ
-       - なければ削除してOK
-
-必ず以下のJSONスキーマのみを出力してください。
-{{
-  "action": "create" または "update",
-  "target_file_path": "src/{category}/ファイル名.md",
-  "content": "生成されたMarkdownの全文文字列"
-}}
+   - categoryには "{category}" を、updated_atには "{today}" を設定してください。
+3. 本文は以下の見出し構成に統一してください（該当しない項目は削除可）。
+   ## 概要
+   ## なぜ必要なのか
+   ## 実装標準
+   ## 設計・実装時のチェックリスト
+   ## アンチパターン
+   ## 実施・導入によるトレードオフ
+   ## 適用範囲と例外
+   ## 検証方法
+   ## 関連ナレッジ
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"提案者: {author}\n提案内容:\n{issue_body}"},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.2,
-    )
-    return json.loads(response.choices[0].message.content)
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            # ストリーミングを有効にしてリクエスト
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": f"提案者: {author}\n提案内容:\n{issue_body}",
+                    },
+                ],
+                temperature=0.2,
+                stream=True,  # ストリーミングによる無通信タイムアウトの防止
+            )
+
+            # ストリーミングでチャンクを順次受け取り、結合する
+            full_content = ""
+            for chunk in response:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta_content = chunk.choices[0].delta.content
+                    if delta_content is not None:
+                        full_content += delta_content
+
+            # 不要なコードブロック装飾が混入した場合は除去（LLMのブレ対策）
+            if full_content.startswith("```markdown"):
+                full_content = full_content.replace("```markdown\n", "", 1)
+                if full_content.endswith("```"):
+                    full_content = full_content[:-3]
+
+            return full_content
+
+        except APITimeoutError as e:
+            print(f"[Attempt {attempt}/{max_attempts}] Timeout error: {e}")
+        except APIConnectionError as e:
+            print(f"[Attempt {attempt}/{max_attempts}] Connection error: {e}")
+        except RateLimitError as e:
+            print("Rate limit exceeded. Aborting.")
+            raise e
+        except Exception as e:
+            print(f"[Attempt {attempt}/{max_attempts}] Unexpected error: {e}")
+
+        if attempt < max_attempts:
+            print("Retrying in 5 seconds...")
+            time.sleep(5)
+
+    raise RuntimeError("Failed to generate markdown after multiple attempts.")
 
 
 def main():
@@ -180,25 +195,30 @@ def main():
     author = os.environ.get("AUTHOR", "")
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. 全ファイルの軽量なメタデータのみをロード
+    # 1. メタデータのロード
     metadata_list = load_all_metadata()
     existing_categories = get_existing_categories()
 
-    # 2. LLMによるカテゴリの決定と関連ファイルの絞り込み
-    print("Analyzing category and selecting related files...")
-    start_step1 = time.time()  # 計測開始
+    # 2. 【Step 1】 メタデータのみを使用したルーティングとアクション決定
+    print("Analyzing category and routing (Step 1)...")
+    start_step1 = time.time()
     analysis_result = step1_analyze_issue(
         issue_body, metadata_list, existing_categories
     )
-    print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds")  # 結果出力
+    print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds")
 
-    category = analysis_result["category"]
-    related_paths = analysis_result["related_file_paths"]
+    category = analysis_result.get("category", "uncategorized")
+    related_paths = analysis_result.get("related_file_paths", [])
+    action = analysis_result.get("action", "create")
+    file_path = analysis_result.get(
+        "target_file_path", f"src/{category}/new_knowledge.md"
+    )
 
+    print(f"-> Action: {action.upper()}")
     print(f"-> Selected Category: {category}")
-    print(f"-> Related Files to check: {related_paths}")
+    print(f"-> Target File: {file_path}")
 
-    # 3. 指定された関連ファイルのみ、本文をディスクから読み込む
+    # 3. 関連ファイルの読み込み
     related_files_content = ""
     for path in related_paths:
         if os.path.exists(path):
@@ -206,26 +226,22 @@ def main():
                 related_files_content += f"--- File: {path} ---\n{f.read()}\n\n"
 
     if not related_files_content:
-        related_files_content = (
-            "（関連する既存ナレッジは検出されませんでした。"
-            "新規作成として処理してください。）"
-        )
+        related_files_content = "（関連する既存ナレッジは検出されませんでした。）"
 
-    # 4. LLMによる最終的なMarkdownの生成
-    print("Generating structural knowledge markdown...")
-    start_step2 = time.time()  # 計測開始
-    final_result = step2_generate_markdown(
+    # 4. 【Step 2】 ストリーミングによるMarkdown本文の生成
+    print("Generating structural knowledge markdown via stream (Step 2)...")
+    start_step2 = time.time()
+    markdown_content = step2_generate_markdown(
         issue_body, author, category, related_files_content, today
     )
-    print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds")  # 結果出力
+    print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds")
 
     # 5. ファイルの書き出し
-    file_path = final_result["target_file_path"]
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(final_result["content"])
+        f.write(markdown_content)
 
-    print(f"Successfully processed ({final_result['action']}) and wrote to {file_path}")
+    print(f"Successfully processed ({action}) and wrote to {file_path}")
 
 
 if __name__ == "__main__":
