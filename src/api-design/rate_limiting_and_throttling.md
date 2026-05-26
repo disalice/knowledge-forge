@@ -4,7 +4,7 @@ title: APIのレート制限（Rate Limiting）とスロットリング
 category: api-design
 author: disalice
 difficulty: 3
-tags: ["API", "パフォーマンス"]
+tags: ["API", "パフォーマンス", "セキュリティ"]
 target_artifacts: ["API仕様書", "コード"]
 updated_at: 2026-05-26
 ---
