@@ -1,7 +1,7 @@
 {
   "metadata": {
     "id": "76a0d5a5-e10a-4638-b788-5ba67305d328",
-    "title": "PR作成時のCI自動テストとカバレッジ要件の導入",
+    "title": "CI/CDへの自動テスト組み込みとカバレッジ要件",
     "category": "testing",
     "author": "disalice",
     "difficulty": 3,

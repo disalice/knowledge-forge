@@ -1,7 +1,7 @@
 {
   "metadata": {
     "id": "ea993556-fff5-433b-9825-7c08f87ffa92",
-    "title": "値オブジェクトの設計と実装ガイド",
+    "title": "クリーンアーキテクチャにおける値オブジェクトの設計",
     "category": "app-architecture",
     "author": "disalice",
     "difficulty": 3,

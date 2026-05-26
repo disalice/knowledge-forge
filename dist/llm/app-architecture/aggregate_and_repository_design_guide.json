@@ -1,7 +1,7 @@
 {
   "metadata": {
     "id": "681fe23e-6fb6-45c3-a6f2-47d1a24f3f96",
-    "title": "集約とリポジトリの設計ガイド",
+    "title": "クリーンアーキテクチャにおける集約設計",
     "category": "app-architecture",
     "author": "disalice",
     "difficulty": 3,
