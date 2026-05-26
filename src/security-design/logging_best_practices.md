@@ -1,9 +1,9 @@
 ---
 id: 22604155-07cf-cd88-7754-3e4a6b34184f
 title: 構造化ログと機密データのマスキング
-category: security
+category: security-design
 author: disalice
-difficulty: 中
+difficulty: 3
 tags: [トレーサビリティ, セキュリティ, コンプライアンス]
 target_artifacts: [アプリケーションログ]
 updated_at: 2026-05-26
