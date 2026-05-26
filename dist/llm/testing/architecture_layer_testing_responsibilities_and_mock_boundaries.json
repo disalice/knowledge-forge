@@ -1,7 +1,7 @@
 {
   "metadata": {
     "id": "165053a4-4dd1-4262-b67e-459e5a5d75e8",
-    "title": "アーキテクチャ層ごとのテスト責務とモック（Mock/Stub）の境界線v2",
+    "title": "アーキテクチャ層ごとのテスト責務とモック（Mock/Stub）の境界線",
     "category": "testing",
     "author": "disalice",
     "difficulty": 3,
