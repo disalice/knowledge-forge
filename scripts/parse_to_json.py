@@ -11,6 +11,10 @@ CONFIG_TAGS_FILE = "config/tags.json"
 
 
 def convert_md_to_json():
+    # 生成前に既存のディレクトリを完全に削除してクリーンアップ
+    if os.path.exists(DIST_LLM_DIR):
+        shutil.rmtree(DIST_LLM_DIR)
+
     os.makedirs(DIST_LLM_DIR, exist_ok=True)
     knowledge_list = []
 
@@ -29,7 +33,8 @@ def convert_md_to_json():
 
             # 個別ファイルの出力（カテゴリごとのディレクトリ構造を維持）
             rel_path = os.path.relpath(filepath, SRC_DIR)
-            json_path = os.path.join(DIST_LLM_DIR, rel_path.replace(".md", ".json"))
+            base_path, _ = os.path.splitext(rel_path)
+            json_path = os.path.join(DIST_LLM_DIR, base_path + ".json")
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
 
             with open(json_path, "w", encoding="utf-8") as out_f:

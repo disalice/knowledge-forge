@@ -3,7 +3,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import frontmatter
 import httpx
@@ -18,18 +18,6 @@ client = OpenAI(
     timeout=httpx.Timeout(60.0),
     max_retries=3,
 )
-
-
-def get_existing_categories():
-    """src直下のディレクトリ一覧を取得する（隠しフォルダを除く）"""
-    src_dir = "src"
-    if not os.path.exists(src_dir):
-        return []
-    return [
-        d
-        for d in os.listdir(src_dir)
-        if os.path.isdir(os.path.join(src_dir, d)) and not d.startswith(".")
-    ]
 
 
 def load_all_metadata():
@@ -147,68 +135,73 @@ def step2_generate_body_only(issue_body, related_files_content):
    ## 検証方法
    ## 関連ナレッジ
 """
-    # エラーハンドリング・リトライ処理は簡略化のため省略せずそのまま実装
-    max_attempts = 3
-    for attempt in range(1, max_attempts + 1):
-        try:
-            # ストリーミングを有効にしてリクエスト
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"提案内容:\n{issue_body}"},
-                ],
-                temperature=0.2,
-                stream=True,  # ストリーミングによる無通信タイムアウトの防止
-            )
+    try:
+        # ストリーミングを有効にしてリクエスト
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"提案内容:\n{issue_body}"},
+            ],
+            temperature=0.2,
+            stream=True,  # ストリーミングによる無通信タイムアウトの防止
+        )
 
-            # ストリーミングでチャンクを順次受け取り、結合する
-            full_content = ""
-            for chunk in response:
-                if chunk.choices and len(chunk.choices) > 0:
-                    delta_content = chunk.choices[0].delta.content
-                    if delta_content is not None:
-                        full_content += delta_content
+        # ストリーミングでチャンクを順次受け取り、結合する
+        full_content = ""
+        for chunk in response:
+            if chunk.choices and len(chunk.choices) > 0:
+                delta_content = chunk.choices[0].delta.content
+                if delta_content is not None:
+                    full_content += delta_content
 
-            # 不要なコードブロック装飾が混入した場合は除去（LLMのブレ対策）
-            if full_content.startswith("```markdown"):
-                full_content = full_content.replace("```markdown\n", "", 1)
-                if full_content.endswith("```"):
-                    full_content = full_content[:-3]
+        # 不要なコードブロック装飾が混入した場合は除去（LLMのブレ対策）
+        if full_content.startswith("```markdown"):
+            full_content = full_content.replace("```markdown\n", "", 1)
+            if full_content.endswith("```"):
+                full_content = full_content[:-3]
 
-            # もしLLMが指示を無視してFront Matterを書いた場合の強制除去
-            if full_content.startswith("---"):
-                parts = full_content.split("---", 2)
-                if len(parts) >= 3:
-                    full_content = parts[2].strip()
+        # もしLLMが指示を無視してFront Matterを書いた場合の強制除去
+        if full_content.startswith("---"):
+            parts = full_content.split("---", 2)
+            if len(parts) >= 3:
+                full_content = parts[2].strip()
 
-            return full_content.strip()
+        return full_content.strip()
 
-        except Exception as e:
-            print(f"[Attempt {attempt}/{max_attempts}] Error: {e}")
-            if attempt < max_attempts:
-                print("Retrying in 5 seconds...")
-                time.sleep(5)
+    except Exception as e:
+        print(f"Error: {e}")
 
     raise RuntimeError("Failed to generate markdown body.")
 
 
 def main():
     issue_body = os.environ.get("ISSUE_BODY", "")
-    issue_labels = os.environ.get("ISSUE_LABELS", "")
     author = os.environ.get("AUTHOR", "")
-    today = datetime.now().strftime("%Y-%m-%d")
+
+    jst = timezone(timedelta(hours=+9), "JST")
+    today = datetime.now(jst).strftime("%Y-%m-%d")
 
     # メタデータのロード
     metadata_list = load_all_metadata()
-    existing_categories = get_existing_categories()
+    standard_tags = load_standard_tags()
 
     print("Step 1: Extracting metadata and routing...")
     start_step1 = time.time()
     meta_json = step1_analyze_and_extract_metadata(
-        issue_body, issue_labels, metadata_list, existing_categories
+        issue_body, metadata_list, standard_tags
     )
     print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds")
+
+    # 新しいタグの検出とマスターリストの更新
+    used_tags = meta_json.get("tags", [])
+    new_tags = [t for t in used_tags if t not in standard_tags]
+
+    if new_tags:
+        print(f"-> Detected new tags: {new_tags}")
+        updated_tags = standard_tags + new_tags
+        save_standard_tags(updated_tags)
+        print("-> Updated config/tags.json")
 
     category = meta_json.get("category", "uncategorized")
     action = meta_json.get("action", "create")
@@ -233,23 +226,6 @@ def main():
         if path != file_path and os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 related_files_content += f"--- File: {path} ---\n{f.read()}\n\n"
-
-    standard_tags = load_standard_tags()
-
-    print("Step 1: Extracting metadata and routing...")
-    meta_json = step1_analyze_and_extract_metadata(
-        issue_body, metadata_list, standard_tags
-    )
-
-    # 新しいタグの検出とマスターリストの更新
-    used_tags = meta_json.get("tags", [])
-    new_tags = [t for t in used_tags if t not in standard_tags]
-
-    if new_tags:
-        print(f"-> Detected new tags: {new_tags}")
-        updated_tags = standard_tags + new_tags
-        save_standard_tags(updated_tags)
-        print("-> Updated config/tags.json")
 
     print("Step 2: Generating markdown body...")
     start_step2 = time.time()

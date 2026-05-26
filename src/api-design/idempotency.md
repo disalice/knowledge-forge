@@ -1,5 +1,5 @@
 ---
-id: 1
+id: bf060217-f9ae-db27-bb13-40f17d4a74f0
 title: APIにおける冪等性のベストプラクティス
 category: api-design
 author: disalice

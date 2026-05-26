@@ -1,5 +1,5 @@
 ---
-id: 1
+id: 210121cb-8106-da2c-8946-56f84086a23a
 title: REST APIのレスポンスにおけるrequestIdの必須化
 description: REST APIのレスポンスには必ずrequestIdを含めることで、トレーサビリティを向上させることができます。
 category: api-design

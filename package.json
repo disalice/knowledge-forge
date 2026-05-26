@@ -8,9 +8,9 @@
     "docs:preview": "vitepress preview src"
   },
   "devDependencies": {
-    "@types/markdown-it": "^13.0.7",
+    "@types/markdown-it": "^13.0.9",
     "markdown-it-task-lists": "^2.1.1",
-    "vitepress": "latest",
-    "vue": "^3.4.0"
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.34"
   }
 }
