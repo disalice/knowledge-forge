@@ -1,7 +1,7 @@
 ---
 id: 7cb058f7-7f14-c3f1-9639-2cb976185433
 title: テストピラミッド
-category: test
+category: testing
 author: disalice
 difficulty: 3
 tags: [テスト]
