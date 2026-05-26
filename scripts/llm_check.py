@@ -2,11 +2,14 @@ import glob
 import json
 import os
 import time
+import uuid
 from datetime import datetime
 
 import frontmatter
 import httpx
-from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+from openai import OpenAI
+
+TAGS_FILE = "config/tags.json"
 
 # 60秒でのタイムアウト設定と、SDK標準のリトライ設定
 client = OpenAI(
@@ -41,10 +44,9 @@ def load_all_metadata():
                 metadata_list.append(
                     {
                         "target_file_path": filepath,
+                        "id": post.get("id"),
                         "title": post.get("title", ""),
-                        "description": post.get("description", ""),
                         "category": post.get("category", ""),
-                        "tags": post.get("tags", []),
                     }
                 )
         except Exception as e:
@@ -52,40 +54,61 @@ def load_all_metadata():
     return metadata_list
 
 
-def step1_analyze_issue(issue_body, metadata_list, existing_categories):
-    """
-    【第1段階】メタデータのみを渡し、カテゴリ・ファイルパス・アクションをJSONで決定する
-    ※Markdown本文の生成はここでは行わない
-    """
-    categories_str = ", ".join(existing_categories) if existing_categories else "なし"
+def load_standard_tags():
+    """タグのマスターリストを読み込む"""
+    if os.path.exists(TAGS_FILE):
+        with open(TAGS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
+
+def save_standard_tags(tags):
+    """タグのマスターリストを更新して保存する"""
+    os.makedirs(os.path.dirname(TAGS_FILE), exist_ok=True)
+    with open(TAGS_FILE, "w", encoding="utf-8") as f:
+        # 重複を排除し、五十音/アルファベット順にソートして保存
+        unique_sorted_tags = sorted(list(set(tags)))
+        json.dump(unique_sorted_tags, f, ensure_ascii=False, indent=2)
+
+
+def step1_analyze_and_extract_metadata(issue_body, metadata_list, standard_tags):
+    """
+    【第1段階】JSONモードを使用し、メタデータとルーティング情報だけを厳格に生成させる
+    """
     system_prompt = f"""あなたは優秀なソリューションアーキテクトです。
-ユーザーから提案されたIssue内容を分析し、以下の項目を決定してください。
+ユーザーから提案されたIssue内容を分析し、メタデータを決定してください。
 
-1. カテゴリの決定:
-   既存のカテゴリ一覧から選択するか、新規概念の場合はケバブケース
-   （例: security-design）で新しいカテゴリ名を作成してください。
-2. 重複・関連ファイルの特定:
-   既存ファイルのメタデータを確認し、詳細な本文をチェックすべきファイル（最大2つまで）の
-   `target_file_path` を選出してください。該当なしなら空配列にしてください。
-3. アクションと対象ファイルパス:
-   - 完全に内容が重複しており、既存のファイルを「更新」すべき場合は
-     action="update" とし、target_file_path にそのファイルのパスを指定してください。
-   - 「新規作成」すべき場合は action="create" とし、target_file_path に
-     "src/{{決定したカテゴリ}}/{{適切な英単語のファイル名}}.md" を指定してください。
+【カテゴリの決定ルール】
+- ユーザーがIssueフォームの「### カテゴリ (Category)」で選択した値を、
+  そのまま厳密に `category` として使用してください。
 
-【現在の既存カテゴリ】
-{categories_str}
+【タグの決定ルール】
+- 現在のタグリスト: {", ".join(standard_tags)}
+- 上記のタグから合致するものを優先して選んでください。
+- もし既存のタグでは表現できない重要な技術要素や
+  新しい概念（例: JWT, Redis, 冪等性 など）が含まれる場合は、
+  新しいタグとして作成し、出力に含めてください。
 
-【既存ファイルのメタデータ一覧（本文は含まれません）】
+【アクションと対象ファイルパスの決定ルール】
+- 既存のナレッジと完全に内容が重複しており、
+  既存のファイルを「更新・上書き」すべき場合は、`action="update"` とし、
+  `target_file_path` には必ず更新対象となる既存ファイルのパスをそのまま指定してください
+- 重複がなく「新規作成」すべき場合は、`action="create"` とし、`target_file_path` に
+  `src/{{category}}/{{適切な英単語のファイル名}}.md` を指定してください。
+
+【既存ファイルのメタデータ一覧（重複判定用）】
 {json.dumps(metadata_list, ensure_ascii=False, indent=2)}
 
 必ず以下のJSONスキーマのみを出力してください。
 {{
-  "category": "決定したカテゴリ名",
-  "related_file_paths": ["詳細をチェックすべき既存ファイルのパス1", "パス2"],
+  "title": "ナレッジのタイトル（簡潔に）",
+  "category": "抽出したカテゴリ名",
+  "difficulty": 1から5までの整数（3を標準とする）,
+  "tags": ["タグ1", "タグ2", "タグ3", ...],
+  "target_artifacts": ["API仕様書", "コード" などの影響成果物],
+  "related_file_paths": ["重複・関連する既存ファイルのパス"],
   "action": "create または update",
-  "target_file_path": "src/.../....md"
+  "target_file_path": "対象となるファイルパス"
 }}
 """
     response = client.chat.completions.create(
@@ -100,35 +123,20 @@ def step1_analyze_issue(issue_body, metadata_list, existing_categories):
     return json.loads(response.choices[0].message.content)
 
 
-def step2_generate_markdown(issue_body, author, category, related_files_content, today):
+def step2_generate_body_only(issue_body, related_files_content):
     """
-    【第2段階】純粋なMarkdownテキストのみをストリーミングで生成する
-    JSONエスケープのオーバーヘッドを無くし、ストリーミングでタイムアウトを防ぐ
+    【第2段階】純粋なMarkdownテキストの本文のみをストリーミング生成させる
     """
     system_prompt = f"""あなたは優秀なシニアソフトウェアエンジニアです。
 提案されたIssue内容を、プロジェクトに依存しない汎用的なベストプラクティスとして構造化・自動補完してMarkdownを生成してください。
 
-【選定されたカテゴリ】
-{category}
-
-【関連する既存ナレッジの本文（重複・矛盾チェック用）】
+【関連する既存ナレッジの本文】
 {related_files_content}
 
 【出力形式の絶対ルール】
-1. JSONフォーマットや ````markdown ```` のようなコードブロックの装飾は一切行わず、
-   **純粋なMarkdownテキストのみ**を出力してください。
-2. ファイルの先頭には必ずYAML Front Matter（---で囲まれた領域）を含めてください。
-   - 必要なキー:
-     - id
-     - title
-     - category
-     - author
-     - difficulty
-     - tags
-     - target_artifacts
-     - updated_at
-   - categoryには "{category}" を、updated_atには "{today}" を設定してください。
-3. 本文は以下の見出し構成に統一してください（該当しない項目は削除可）。
+1. YAML Front Matter (---で囲まれた部分) は**絶対に含めないでください**。
+2. ```markdown のようなコードブロックの装飾は全体に適用しないでください。
+3. 以下の見出し構成に統一してください（該当しない項目は削除可）。
    ## 概要
    ## なぜ必要なのか
    ## 実装標準
@@ -139,7 +147,7 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
    ## 検証方法
    ## 関連ナレッジ
 """
-
+    # エラーハンドリング・リトライ処理は簡略化のため省略せずそのまま実装
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
         try:
@@ -148,10 +156,7 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": f"提案者: {author}\n提案内容:\n{issue_body}",
-                    },
+                    {"role": "user", "content": f"提案内容:\n{issue_body}"},
                 ],
                 temperature=0.2,
                 stream=True,  # ストリーミングによる無通信タイムアウトの防止
@@ -171,75 +176,111 @@ def step2_generate_markdown(issue_body, author, category, related_files_content,
                 if full_content.endswith("```"):
                     full_content = full_content[:-3]
 
-            return full_content
+            # もしLLMが指示を無視してFront Matterを書いた場合の強制除去
+            if full_content.startswith("---"):
+                parts = full_content.split("---", 2)
+                if len(parts) >= 3:
+                    full_content = parts[2].strip()
 
-        except APITimeoutError as e:
-            print(f"[Attempt {attempt}/{max_attempts}] Timeout error: {e}")
-        except APIConnectionError as e:
-            print(f"[Attempt {attempt}/{max_attempts}] Connection error: {e}")
-        except RateLimitError as e:
-            print("Rate limit exceeded. Aborting.")
-            raise e
+            return full_content.strip()
+
         except Exception as e:
-            print(f"[Attempt {attempt}/{max_attempts}] Unexpected error: {e}")
+            print(f"[Attempt {attempt}/{max_attempts}] Error: {e}")
+            if attempt < max_attempts:
+                print("Retrying in 5 seconds...")
+                time.sleep(5)
 
-        if attempt < max_attempts:
-            print("Retrying in 5 seconds...")
-            time.sleep(5)
-
-    raise RuntimeError("Failed to generate markdown after multiple attempts.")
+    raise RuntimeError("Failed to generate markdown body.")
 
 
 def main():
     issue_body = os.environ.get("ISSUE_BODY", "")
+    issue_labels = os.environ.get("ISSUE_LABELS", "")
     author = os.environ.get("AUTHOR", "")
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. メタデータのロード
+    # メタデータのロード
     metadata_list = load_all_metadata()
     existing_categories = get_existing_categories()
 
-    # 2. 【Step 1】 メタデータのみを使用したルーティングとアクション決定
-    print("Analyzing category and routing (Step 1)...")
+    print("Step 1: Extracting metadata and routing...")
     start_step1 = time.time()
-    analysis_result = step1_analyze_issue(
-        issue_body, metadata_list, existing_categories
+    meta_json = step1_analyze_and_extract_metadata(
+        issue_body, issue_labels, metadata_list, existing_categories
     )
     print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds")
 
-    category = analysis_result.get("category", "uncategorized")
-    related_paths = analysis_result.get("related_file_paths", [])
-    action = analysis_result.get("action", "create")
-    file_path = analysis_result.get(
-        "target_file_path", f"src/{category}/new_knowledge.md"
-    )
+    category = meta_json.get("category", "uncategorized")
+    action = meta_json.get("action", "create")
+    file_path = meta_json.get("target_file_path", f"src/{category}/new_knowledge.md")
+    related_paths = meta_json.get("related_file_paths", [])
 
-    print(f"-> Action: {action.upper()}")
-    print(f"-> Selected Category: {category}")
-    print(f"-> Target File: {file_path}")
+    print(f"-> Action: {action.upper()}, Category: {category}")
 
-    # 3. 関連ファイルの読み込み
+    # 関連ファイルの読み込みと、更新時のID引継ぎ処理
+    knowledge_id = str(uuid.uuid4())  # 新規作成時のデフォルトUUID
     related_files_content = ""
+
+    if action == "update" and os.path.exists(file_path):
+        with open(file_path, encoding="utf-8") as f:
+            post = frontmatter.load(f)
+            related_files_content += f"--- File: {file_path} ---\n{post.content}\n\n"
+            # 既存ファイルのIDを引き継ぐ
+            if post.get("id"):
+                knowledge_id = post.get("id")
+
     for path in related_paths:
-        if os.path.exists(path):
+        if path != file_path and os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 related_files_content += f"--- File: {path} ---\n{f.read()}\n\n"
 
-    if not related_files_content:
-        related_files_content = "（関連する既存ナレッジは検出されませんでした。）"
+    standard_tags = load_standard_tags()
 
-    # 4. 【Step 2】 ストリーミングによるMarkdown本文の生成
-    print("Generating structural knowledge markdown via stream (Step 2)...")
-    start_step2 = time.time()
-    markdown_content = step2_generate_markdown(
-        issue_body, author, category, related_files_content, today
+    print("Step 1: Extracting metadata and routing...")
+    meta_json = step1_analyze_and_extract_metadata(
+        issue_body, metadata_list, standard_tags
     )
+
+    # 新しいタグの検出とマスターリストの更新
+    used_tags = meta_json.get("tags", [])
+    new_tags = [t for t in used_tags if t not in standard_tags]
+
+    if new_tags:
+        print(f"-> Detected new tags: {new_tags}")
+        updated_tags = standard_tags + new_tags
+        save_standard_tags(updated_tags)
+        print("-> Updated config/tags.json")
+
+    print("Step 2: Generating markdown body...")
+    start_step2 = time.time()
+    body_content = step2_generate_body_only(issue_body, related_files_content)
     print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds")
 
-    # 5. ファイルの書き出し
+    # 最終的な Front Matter の組み立て（Python側で型とフォーマットを強制）
+    # JSONの配列データを正しくYAMLリストとして出力するための整形
+    tags_str = json.dumps(meta_json.get("tags", []), ensure_ascii=False)
+    artifacts_str = json.dumps(
+        meta_json.get("target_artifacts", []), ensure_ascii=False
+    )
+
+    final_document = f"""---
+id: {knowledge_id}
+title: {meta_json.get("title", "無題")}
+category: {category}
+author: {author}
+difficulty: {meta_json.get("difficulty", 3)}
+tags: {tags_str}
+target_artifacts: {artifacts_str}
+updated_at: {today}
+---
+
+{body_content}
+"""
+
+    # ファイルの書き出し
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(markdown_content)
+        f.write(final_document)
 
     print(f"Successfully processed ({action}) and wrote to {file_path}")
 

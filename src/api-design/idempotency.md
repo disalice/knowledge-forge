@@ -1,10 +1,10 @@
 ---
 id: 1
 title: APIにおける冪等性のベストプラクティス
-category: api-idempotency
+category: api-design
 author: disalice
 difficulty: 3
-tags: [API, 冪等性, 分散システム]
+tags: [API, 分散システム]
 target_artifacts: [API仕様書, ドキュメント]
 updated_at: 2026-05-25
 ---
@@ -54,4 +54,4 @@ updated_at: 2026-05-25
 
 - [Stripe API のリトライと冪等性#冪等性](https://qiita.com/ishikawa@github/items/087f5e5f9a5ed5a93b21#%E5%86%AA%E7%AD%89%E6%80%A7)
 - [RFC 9110 - HTTP Semantics 日本語訳](https://tex2e.github.io/rfc-translater/html/rfc9110.html)
-  * 9.2.2. Idempotent Methods
+  - 9.2.2. Idempotent Methods
