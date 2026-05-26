@@ -59,12 +59,19 @@ def save_standard_tags(tags):
         json.dump(unique_sorted_tags, f, ensure_ascii=False, indent=2)
 
 
-def step1_analyze_and_extract_metadata(issue_body, metadata_list, standard_tags):
+def step1_analyze_and_extract_metadata(
+    issue_title, issue_body, metadata_list, standard_tags
+):
     """
     【第1段階】JSONモードを使用し、メタデータとルーティング情報だけを厳格に生成させる
     """
     system_prompt = f"""あなたは優秀なソリューションアーキテクトです。
 ユーザーから提案されたIssue内容を分析し、メタデータを決定してください。
+
+【タイトルの決定ルール】
+- ユーザーが提案したタイトル「{issue_title}」から "[Knowledge]: " などのプレフィックスを
+  除外したものを、そのまま厳密に `title` として使用してください。
+  もしタイトルが無題の場合、Issue内容から推測してください。
 
 【カテゴリの決定ルール】
 - ユーザーがIssueフォームの「### カテゴリ (Category)」で選択した値を、
@@ -89,7 +96,7 @@ def step1_analyze_and_extract_metadata(issue_body, metadata_list, standard_tags)
 
 必ず以下のJSONスキーマのみを出力してください。
 {{
-  "title": "ナレッジのタイトル（簡潔に）",
+  "title": "ナレッジのタイトル",
   "category": "抽出したカテゴリ名",
   "difficulty": 1から5までの整数（3を標準とする）,
   "tags": ["タグ1", "タグ2", "タグ3", ...],
@@ -97,7 +104,9 @@ def step1_analyze_and_extract_metadata(issue_body, metadata_list, standard_tags)
   "related_file_paths": ["重複・関連する既存ファイルのパス"],
   "action": "create または update",
   "target_file_path": "対象となるファイルパス",
-  "implied_technologies": ["文章から推測される暗黙の前提技術（例: RDBMS, SQL, React, AWSなど。最大3つ）"]
+  "implied_technologies": [
+    "文章から推測される暗黙の前提技術（例: RDBMS, SQL, React, AWSなど。最大10）"
+  ]
 }}
 """
     response = client.chat.completions.create(
@@ -112,12 +121,15 @@ def step1_analyze_and_extract_metadata(issue_body, metadata_list, standard_tags)
     return json.loads(response.choices[0].message.content)
 
 
-def step2_generate_body_only(issue_body, related_files_content):
+def step2_generate_body_only(issue_title, issue_body, related_files_content):
     """
     【第2段階】純粋なMarkdownテキストの本文のみをストリーミング生成させる
     """
     system_prompt = f"""あなたは優秀なシニアソフトウェアエンジニアです。
-ナレッジとして起票されたIssue内容を、プロジェクトに依存しない汎用的なベストプラクティスとして構造化・自動補完してMarkdownを生成してください。
+以下のタイトルと内容で起票されたナレッジ草案を、プロジェクトに依存しない汎用的なベストプラクティスとして構造化・自動補完してMarkdownを生成してください。
+
+【対象のナレッジタイトル】
+{issue_title}
 
 【関連する既存ナレッジの本文】
 {related_files_content}
@@ -151,7 +163,10 @@ def step2_generate_body_only(issue_body, related_files_content):
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"提案内容:\n{issue_body}"},
+                {
+                    "role": "user",
+                    "content": f"タイトル: {issue_title}\n\n内容:\n{issue_body}",
+                },
             ],
             temperature=0.2,
             stream=True,  # ストリーミングによる無通信タイムアウトの防止
@@ -186,6 +201,7 @@ def step2_generate_body_only(issue_body, related_files_content):
 
 
 def main():
+    issue_title = os.environ.get("ISSUE_TITLE", "無題")
     issue_body = os.environ.get("ISSUE_BODY", "")
     author = os.environ.get("AUTHOR", "")
 
@@ -199,7 +215,7 @@ def main():
     print("Step 1: Extracting metadata and routing...")
     start_step1 = time.time()
     meta_json = step1_analyze_and_extract_metadata(
-        issue_body, metadata_list, standard_tags
+        issue_title, issue_body, metadata_list, standard_tags
     )
     print(f"-> [Step1 Done] {time.time() - start_step1:.2f} seconds")
 
@@ -239,7 +255,9 @@ def main():
 
     print("Step 2: Generating markdown body...")
     start_step2 = time.time()
-    body_content = step2_generate_body_only(issue_body, related_files_content)
+    body_content = step2_generate_body_only(
+        issue_title, issue_body, related_files_content
+    )
     print(f"-> [Step2 Done] {time.time() - start_step2:.2f} seconds")
 
     # 最終的な Front Matter の組み立て（Python側で型とフォーマットを強制）
