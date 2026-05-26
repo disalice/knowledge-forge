@@ -1,7 +1,7 @@
 [
   {
     "metadata": {
-      "id": "api-error-response",
+      "id": "23775ace-0942-7e16-3fd7-dc25e61ee999",
       "title": "APIエラーレスポンスのフォーマット",
       "category": "api-design",
       "author": "disalice",
@@ -19,7 +19,7 @@
   },
   {
     "metadata": {
-      "id": 1,
+      "id": "210121cb-8106-da2c-8946-56f84086a23a",
       "title": "REST APIのレスポンスにおけるrequestIdの必須化",
       "description": "REST APIのレスポンスには必ずrequestIdを含めることで、トレーサビリティを向上させることができます。",
       "category": "api-design",
@@ -39,7 +39,7 @@
   },
   {
     "metadata": {
-      "id": 1,
+      "id": "bf060217-f9ae-db27-bb13-40f17d4a74f0",
       "title": "APIにおける冪等性のベストプラクティス",
       "category": "api-design",
       "author": "disalice",
@@ -58,7 +58,7 @@
   },
   {
     "metadata": {
-      "id": "security-design-001",
+      "id": "22604155-07cf-cd88-7754-3e4a6b34184f",
       "title": "構造化ログと機密データのマスキング",
       "category": "security",
       "author": "disalice",
@@ -77,7 +77,7 @@
   },
   {
     "metadata": {
-      "id": "test-pyramid",
+      "id": "7cb058f7-7f14-c3f1-9639-2cb976185433",
       "title": "テストピラミッド",
       "category": "test",
       "author": "disalice",
