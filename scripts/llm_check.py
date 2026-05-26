@@ -116,7 +116,7 @@ def step2_generate_body_only(issue_body, related_files_content):
     【第2段階】純粋なMarkdownテキストの本文のみをストリーミング生成させる
     """
     system_prompt = f"""あなたは優秀なシニアソフトウェアエンジニアです。
-提案されたIssue内容を、プロジェクトに依存しない汎用的なベストプラクティスとして構造化・自動補完してMarkdownを生成してください。
+ナレッジとして起票されたIssue内容を、プロジェクトに依存しない汎用的なベストプラクティスとして構造化・自動補完してMarkdownを生成してください。
 
 【関連する既存ナレッジの本文】
 {related_files_content}
@@ -134,6 +134,7 @@ def step2_generate_body_only(issue_body, related_files_content):
    ## 適用範囲と例外
    ## 検証方法
    ## 関連ナレッジ
+4. Issue内容から情報が欠落しないよう最新の注意をしてください。
 """
     try:
         # ストリーミングを有効にしてリクエスト
